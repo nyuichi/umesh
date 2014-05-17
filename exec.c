@@ -148,7 +148,7 @@ exec_process_list(process *pr_list)
 extern xvect cz_jobs;
 
 int
-exec_job(process *pr_list, int fg)
+exec_job(process *pr_list, int mode)
 {
   process *pr;
   pid_t pgid;
@@ -158,7 +158,7 @@ exec_job(process *pr_list, int fg)
     return -1;
   }
 
-  if (fg) {
+  if (mode == FOREGROUND) {
 
     if (tcsetpgrp(0, pgid) == -1) {
       return -1;
@@ -213,7 +213,7 @@ exec_job_list(job *job_list)
   job *jb;
 
   for (jb = job_list; jb != NULL; jb = jb->next) {
-    if (exec_job(jb->process_list, jb->mode == FOREGROUND) < 0) {
+    if (exec_job(jb->process_list, jb->mode) < 0) {
       abort();
     }
   }
