@@ -35,9 +35,9 @@ main(int argc, char *argv[]) {
 #endif
 
       exec_job_list(curr_job);
-    }
 
-    free_job(curr_job);
+      free_job(curr_job);
+    }
   }
 
   exec_fini();
