@@ -11,6 +11,7 @@ void print_job_list(job *);
 void exec_init(void);
 void exec_fini(void);
 void exec_bg(void);
+void exec_fg(void);
 void exec_job_list(job *);
 
 int
@@ -26,6 +27,9 @@ main(int argc, char *argv[]) {
 
     if (! strcmp(s, "bg\n")) {
       exec_bg();
+    }
+    else if (! strcmp(s, "fg\n")) {
+      exec_fg();
     }
     else {
       curr_job = parse_line(s);

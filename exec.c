@@ -138,33 +138,6 @@ exec_fini(void)
   xv_destroy(&bg_jobs);
 }
 
-void
-exec_bg(void)
-{
-  sigset_t sigset;
-  bg_job *job;
-  size_t i;
-
-  sigemptyset(&sigset);
-  sigaddset(&sigset, SIGCHLD);
-  sigprocmask(SIG_BLOCK, &sigset, NULL);
-
-  for (i = xv_size(&bg_jobs) - 1; i >= 0; --i) {
-    job = (bg_job *)xv_get(&bg_jobs, i);
-    if (job->status == SUSPENDED) {
-      break;
-    }
-  }
-  if (i != -1) {
-    kill(-job->pgid, SIGCONT);
-    job->status = RUNNING;
-  } else {
-    fprintf(stderr, "no suspended process\n");
-  }
-
-  sigprocmask(SIG_UNBLOCK, &sigset, NULL);
-}
-
 extern char **environ;
 
 const char *
@@ -369,4 +342,63 @@ exec_job_list(job *job_list)
       abort();
     }
   }
+}
+
+void
+exec_bg(void)
+{
+  sigset_t sigset;
+  bg_job *job;
+  size_t i;
+
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &sigset, NULL);
+
+  for (i = xv_size(&bg_jobs) - 1; i >= 0; --i) {
+    job = (bg_job *)xv_get(&bg_jobs, i);
+    if (job->status == SUSPENDED) {
+      break;
+    }
+  }
+  if (i != -1) {
+    kill(-job->pgid, SIGCONT);
+    job->status = RUNNING;
+  } else {
+    fprintf(stderr, "no suspended process\n");
+  }
+
+  sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+}
+
+void
+exec_fg(void)
+{
+  sigset_t sigset;
+  bg_job *job;
+
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &sigset, NULL);
+
+  if (xv_size(&bg_jobs) != 0) {
+    job = (bg_job *)xv_pop(&bg_jobs);
+    if (job->status == SUSPENDED) {
+      kill(-job->pgid, SIGCONT);
+    }
+
+    if (tcsetpgrp(0, job->pgid) == -1) {
+      perror("tcsetpgrp");
+    }
+
+    wait_for_job(job->pgid);
+
+    if (tcsetpgrp(0, getpgid(0)) == -1) {
+      perror("tcsetpgrp");
+    }
+  } else {
+    fprintf(stderr, "no background process\n");
+  }
+
+  sigprocmask(SIG_UNBLOCK, &sigset, NULL);
 }
