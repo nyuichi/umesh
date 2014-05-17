@@ -254,12 +254,32 @@ exec_process_list(process *pr_list)
   return pgid;
 }
 
+static void
+wait_for_job(process *pr_list)
+{
+  process *pr;
+  int status;
+
+  status = 0;
+  for (pr = pr_list; pr != NULL; pr = pr->next) {
+    while (waitpid(pr->pid, &status, WUNTRACED) == -1) {
+      if (errno == EINTR)
+        ;                    /* retry when interrupted by SIGCHLD */
+      else if (errno == ECHILD)
+        break;                /* already discarded by do_sigchld */
+      else
+        perror("waitpid");
+    }
+  }
+  if (WIFSTOPPED(status)) {
+    post_job_suspend(pr_list->pid, 0);
+  }
+}
+
 static int
 exec_job(process *pr_list, int mode)
 {
-  process *pr;
   pid_t pgid;
-  int status;
 
   if ((pgid = exec_process_list(pr_list)) < 0) {
     return -1;
@@ -271,21 +291,7 @@ exec_job(process *pr_list, int mode)
       return -1;
     }
 
-    /* wait! */
-    status = 0;
-    for (pr = pr_list; pr != NULL; pr = pr->next) {
-      while (waitpid(pr->pid, &status, WUNTRACED) == -1) {
-        if (errno == EINTR)
-          ;                    /* retry when interrupted by SIGCHLD */
-        else if (errno == ECHILD)
-          break;                /* already discarded by do_sigchld */
-        else
-          perror("waitpid");
-      }
-    }
-    if (WIFSTOPPED(status)) {
-      post_job_suspend(pr_list->pid, 0);
-    }
+    wait_for_job(pr_list);
 
     if (tcsetpgrp(0, getpgid(0)) == -1) {
       return -1;
