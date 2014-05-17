@@ -264,9 +264,9 @@ wait_for_job(process *pr_list)
   for (pr = pr_list; pr != NULL; pr = pr->next) {
     while (waitpid(pr->pid, &status, WUNTRACED) == -1) {
       if (errno == EINTR)
-        ;                    /* retry when interrupted by SIGCHLD */
+        continue;              /* retry when interrupted by SIGCHLD */
       else if (errno == ECHILD)
-        break;                /* already discarded by do_sigchld */
+        break;                  /* already discarded by do_sigchld */
       else
         perror("waitpid");
     }
