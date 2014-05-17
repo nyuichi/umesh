@@ -15,23 +15,42 @@
 xvect cz_jobs;                 /* list of pgids of suspended jobs */
 
 static void
+post_job_suspend(pid_t pid, int in_sa_handler)
+{
+  sigset_t sigset;
+  pid_t pgid;
+  size_t i;
+
+  if (! in_sa_handler) {
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &sigset, NULL);
+  }
+
+  pgid = getpgid(pid);
+  for (i = 0; i < xv_size(&cz_jobs);) {
+    if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
+      xv_splice(&cz_jobs, i, 1);
+    } else {
+      ++i;
+    }
+  }
+  xv_push(&cz_jobs, &pgid);
+
+  if (! in_sa_handler) {
+    sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+  }
+}
+
+static void
 do_sigchld(int sig)
 {
-  pid_t pid, pgid;
+  pid_t pid;
   int status;
-  size_t i;
 
   while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
     if (WIFSTOPPED(status)) {
-      pgid = getpgid(pid);
-      for (i = 0; i < xv_size(&cz_jobs);) {
-        if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
-          xv_splice(&cz_jobs, i, 1);
-        } else {
-          ++i;
-        }
-      }
-      xv_push(&cz_jobs, &pgid);
+      post_job_suspend(pid, 1);
     }
   }
 }
@@ -265,25 +284,7 @@ exec_job(process *pr_list, int mode)
       }
     }
     if (WIFSTOPPED(status)) {
-      sigset_t sigset;
-      size_t i;
-
-      sigemptyset(&sigset);
-      sigaddset(&sigset, SIGCHLD);
-      sigprocmask(SIG_BLOCK, &sigset, NULL);
-
-      /* pid of the first process of a job is the pgid of the job */
-      pgid = pr_list->pid;
-      for (i = 0; i < xv_size(&cz_jobs);) {
-        if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
-          xv_splice(&cz_jobs, i, 1);
-        } else {
-          ++i;
-        }
-      }
-      xv_push(&cz_jobs, &pgid);
-
-      sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+      post_job_suspend(pr_list->pid, 0);
     }
 
     if (tcsetpgrp(0, getpgid(0)) == -1) {
