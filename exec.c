@@ -14,7 +14,7 @@
 
 xvect cz_jobs;                 /* list of pgids of suspended jobs */
 
-void
+static void
 do_sigchld(int sig)
 {
   pid_t pid, pgid;
@@ -36,13 +36,13 @@ do_sigchld(int sig)
   }
 }
 
-void
+static void
 do_sigtstp(int sig)
 {
   /* pass */
 }
 
-void
+static void
 exec_signal_init(void)
 {
   struct sigaction ign, chld, stp;
@@ -103,11 +103,11 @@ exec_bg(void)
 }
 
 extern char **environ;
-char FC_BUF[256];
 
 const char *
 find_command(const char *name)
 {
+  static char BUF[256];
   const char *path;
   size_t len;
   struct stat st;
@@ -120,13 +120,13 @@ find_command(const char *name)
     return NULL;
   }
   while ((len = strcspn(path, ":")) != 0) {
-    strncpy(FC_BUF, path, len);
-    FC_BUF[len] = '\0';
-    strcat(FC_BUF, "/");
-    strcat(FC_BUF, name);
+    strncpy(BUF, path, len);
+    BUF[len] = '\0';
+    strcat(BUF, "/");
+    strcat(BUF, name);
 
-    if (stat(FC_BUF, &st) == 0) {
-      return FC_BUF;
+    if (stat(BUF, &st) == 0) {
+      return BUF;
     }
 
     if (path[len] == '\0') {
@@ -139,7 +139,7 @@ find_command(const char *name)
   return NULL;
 }
 
-int
+static int
 open_pipes(process *pr)
 {
   process *prev;
@@ -181,7 +181,7 @@ open_pipes(process *pr)
   return 0;
 }
 
-int
+static int
 exec_process_list(process *pr_list)
 {
   process *pr;
@@ -235,7 +235,7 @@ exec_process_list(process *pr_list)
   return pgid;
 }
 
-int
+static int
 exec_job(process *pr_list, int mode)
 {
   process *pr;
