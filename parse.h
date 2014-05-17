@@ -3,7 +3,7 @@
 
 #include <unistd.h>
 
-#define PROMPT "ish$ "
+#define PROMPT "umesh$ "
 #define NAMELEN 32
 #define ARGLSTLEN 16
 #define LINELEN 256

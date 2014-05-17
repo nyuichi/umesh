@@ -3,7 +3,7 @@ CFLAGS = -Wall -g
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
 
-TARGET = ish
+TARGET = umesh
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
