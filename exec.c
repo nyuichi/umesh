@@ -12,13 +12,23 @@
 #include "parse.h"
 #include "xvect.h"
 
-xvect cz_jobs;                 /* list of pgids of suspended jobs */
+typedef struct bg_job {
+  pid_t pgid;
+  int status;
+} bg_job;
+
+enum {
+  RUNNING,
+  SUSPENDED
+};
+
+xvect bg_jobs;                 /* list of bg_job */
 
 static void
-post_job_suspend(pid_t pid, int in_sa_handler)
+post_job_suspend(pid_t pgid, int in_sa_handler)
 {
   sigset_t sigset;
-  pid_t pgid;
+  bg_job job;
   size_t i;
 
   if (! in_sa_handler) {
@@ -27,15 +37,18 @@ post_job_suspend(pid_t pid, int in_sa_handler)
     sigprocmask(SIG_BLOCK, &sigset, NULL);
   }
 
-  pgid = getpgid(pid);
-  for (i = 0; i < xv_size(&cz_jobs);) {
-    if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
-      xv_splice(&cz_jobs, i, 1);
-    } else {
-      ++i;
+  for (i = 0; i < xv_size(&bg_jobs); ++i) {
+    job = *(bg_job *)xv_get(&bg_jobs, i);
+    if (job.pgid == pgid) {
+      job.status = SUSPENDED;
+      break;
     }
   }
-  xv_push(&cz_jobs, &pgid);
+  if (i == xv_size(&bg_jobs)) {
+    job.pgid = pgid;
+    job.status = SUSPENDED;
+    xv_push(&bg_jobs, &job);
+  }
 
   if (! in_sa_handler) {
     sigprocmask(SIG_UNBLOCK, &sigset, NULL);
@@ -45,14 +58,38 @@ post_job_suspend(pid_t pid, int in_sa_handler)
 static void
 do_sigchld(int sig)
 {
-  pid_t pid;
+  pid_t pid, pgid;
   int status;
+  xvect dying_jobs;
+  size_t i, j;
 
-  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+  xv_init(&dying_jobs, sizeof(pid_t));
+
+  while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
     if (WIFSTOPPED(status)) {
-      post_job_suspend(pid, 1);
+      post_job_suspend(getpgid(pid), 1);
+    }
+    else {
+      pgid = getpgid(pid);
+      xv_push(&dying_jobs, &pgid);
     }
   }
+
+  for (i = 0; i < xv_size(&dying_jobs); ++i) {
+    pgid = *(pid_t *)xv_get(&dying_jobs, i);
+    if (waitpid(-pgid, &status, WNOHANG | WUNTRACED) == -1 && errno == ECHILD) { /* if the job of pgid is completely dead */
+      for (j = 0; j < xv_size(&bg_jobs); ++j) {
+        if (((bg_job *)xv_get(&bg_jobs, j))->pgid == pgid) {
+          break;
+        }
+      }
+      if (j != xv_size(&bg_jobs)) {
+        xv_splice(&bg_jobs, j, 1);
+      }
+    }
+  }
+
+  xv_destroy(&dying_jobs);
 }
 
 static void
@@ -90,7 +127,7 @@ exec_signal_init(void)
 void
 exec_init(void)
 {
-  xv_init(&cz_jobs, sizeof(pid_t));
+  xv_init(&bg_jobs, sizeof(bg_job));
 
   exec_signal_init();
 }
@@ -98,22 +135,29 @@ exec_init(void)
 void
 exec_fini(void)
 {
-  xv_destroy(&cz_jobs);
+  xv_destroy(&bg_jobs);
 }
 
 void
 exec_bg(void)
 {
   sigset_t sigset;
-  pid_t pgid;
+  bg_job *job;
+  size_t i;
 
   sigemptyset(&sigset);
   sigaddset(&sigset, SIGCHLD);
   sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-  if (xv_size(&cz_jobs) > 0) {
-    pgid = *(pid_t *)xv_pop(&cz_jobs);
-    kill(-pgid, SIGCONT);
+  for (i = xv_size(&bg_jobs) - 1; i >= 0; --i) {
+    job = (bg_job *)xv_get(&bg_jobs, i);
+    if (job->status == SUSPENDED) {
+      break;
+    }
+  }
+  if (i != -1) {
+    kill(-job->pgid, SIGCONT);
+    job->status = RUNNING;
   } else {
     fprintf(stderr, "no suspended process\n");
   }
@@ -255,25 +299,29 @@ exec_process_list(process *pr_list)
 }
 
 static void
-wait_for_job(process *pr_list)
+wait_for_job(pid_t pgid)
 {
-  process *pr;
+  pid_t pid;
   int status;
 
-  status = 0;
-  for (pr = pr_list; pr != NULL; pr = pr->next) {
-    while (waitpid(pr->pid, &status, WUNTRACED) == -1) {
-      if (errno == EINTR)
-        continue;              /* retry when interrupted by SIGCHLD */
-      else if (errno == ECHILD)
-        break;                  /* already discarded by do_sigchld */
-      else
+  do {
+    pid = waitpid(-pgid, &status, WUNTRACED);
+    if (pid == -1) {
+      if (errno == EINTR) {
+        continue;               /* retry when interrupted by SIGCHLD */
+      } else if (errno == ECHILD) {
+        continue;                  /* already discarded by do_sigchld */
+      } else {
         perror("waitpid");
+      }
     }
-  }
-  if (WIFSTOPPED(status)) {
-    post_job_suspend(pr_list->pid, 0);
-  }
+    if (pid > 0) {
+      if (WIFSTOPPED(status)) {
+        post_job_suspend(pgid, 0);
+        break;
+      }
+    }
+  } while (pid > 0);
 }
 
 static int
@@ -286,17 +334,26 @@ exec_job(process *pr_list, int mode)
   }
 
   if (mode == FOREGROUND) {
+    /* fg */
 
     if (tcsetpgrp(0, pgid) == -1) {
       return -1;
     }
 
-    wait_for_job(pr_list);
+    wait_for_job(pgid);
 
     if (tcsetpgrp(0, getpgid(0)) == -1) {
       return -1;
     }
+  }
+  else {
+    /* bg */
 
+    bg_job job;
+
+    job.pgid = pgid;
+    job.status = RUNNING;
+    xv_push(&bg_jobs, &job);
   }
 
   return 0;
