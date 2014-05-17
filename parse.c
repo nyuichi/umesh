@@ -13,6 +13,8 @@ char* get_line(char *s, int size) {
   printf(PROMPT);
 
   while(fgets(s, size, stdin) == NULL) {
+    if (feof(stdin))
+      return NULL;
     if(errno == EINTR)
       continue;
     return NULL;
