@@ -4,15 +4,33 @@
 #include <sys/wait.h>
 
 #include "parse.h"
+#include "xvect.h"
 
 void print_job_list(job *);
 void exec_job_list(job *);
 
+xvect cz_pgids;                 /* can have some duplicates */
+
 void
 do_sigchld(int sig)
 {
-  while (waitpid(-1, NULL, WNOHANG) > 0)
-    ;
+  pid_t pid, pgid;
+  int status;
+  size_t i;
+
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    if (WIFSTOPPED(status)) {
+      pgid = getpgid(pid);
+      for (i = 0; i < xv_size(&cz_pgids);) {
+        if (*(pid_t *)xv_get(&cz_pgids, i) == pgid) {
+          xv_splice(&cz_pgids, i, 1);
+        } else {
+          ++i;
+        }
+      }
+      xv_push(&cz_pgids, &pgid);
+    }
+  }
 }
 
 void
@@ -51,6 +69,8 @@ int main(int argc, char *argv[], char *argp[]) {
     char s[LINELEN];
     job *curr_job;
 
+    xv_init(&cz_pgids, sizeof(pid_t));
+
     init();
 
     while(get_line(s, LINELEN)) {
@@ -67,6 +87,8 @@ int main(int argc, char *argv[], char *argp[]) {
 
         free_job(curr_job);
     }
+
+    xv_destroy(&cz_pgids);
 
     return 0;
 }
