@@ -111,6 +111,7 @@ exec_process_list(process *pr_list)
 
       cmd = find_command(pr->program_name);
       if (cmd == NULL) {
+        fprintf(stderr, "program not found: %s\n", pr->program_name);
         return -1;
       }
 
