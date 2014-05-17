@@ -164,6 +164,7 @@ exec_job(process *pr_list, int fg)
     }
 
     /* wait! */
+    status = 0;
     for (pr = pr_list; pr != NULL; pr = pr->next) {
       while (waitpid(pr->pid, &status, WUNTRACED) == -1) {
         if (errno == EINTR)
