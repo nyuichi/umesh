@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdio.h>
 
 #include <signal.h>
 #include <sys/wait.h>
@@ -65,6 +66,26 @@ init(void)
   sigaction(SIGCHLD, &chld, NULL);
 }
 
+void
+exec_bg(void)
+{
+  sigset_t sigset;
+  pid_t pgid;
+
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &sigset, NULL);
+
+  if (xv_size(&cz_pgids) > 0) {
+    pgid = *(pid_t *)xv_pop(&cz_pgids);
+    kill(-pgid, SIGCONT);
+  } else {
+    fprintf(stderr, "no suspended process\n");
+  }
+
+  sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+}
+
 int main(int argc, char *argv[], char *argp[]) {
     char s[LINELEN];
     job *curr_job;
@@ -73,17 +94,22 @@ int main(int argc, char *argv[], char *argp[]) {
 
     init();
 
-    while(get_line(s, LINELEN)) {
-        if(!strcmp(s, "exit\n"))
+    while (get_line(s, LINELEN)) {
+        if (! strcmp(s, "exit\n"))
             break;
 
-        curr_job = parse_line(s);
+        if (! strcmp(s, "bg\n")) {
+          exec_bg();
+        }
+        else {
+          curr_job = parse_line(s);
 
 #if 0
-        print_job_list(curr_job);
+          print_job_list(curr_job);
 #endif
 
-        exec_job_list(curr_job);
+          exec_job_list(curr_job);
+        }
 
         free_job(curr_job);
     }
