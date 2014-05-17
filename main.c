@@ -86,35 +86,36 @@ exec_bg(void)
   sigprocmask(SIG_UNBLOCK, &sigset, NULL);
 }
 
-int main(int argc, char *argv[], char *argp[]) {
-    char s[LINELEN];
-    job *curr_job;
+int
+main(int argc, char *argv[]) {
+  char s[LINELEN];
+  job *curr_job;
 
-    xv_init(&cz_pgids, sizeof(pid_t));
+  xv_init(&cz_pgids, sizeof(pid_t));
 
-    init();
+  init();
 
-    while (get_line(s, LINELEN)) {
-        if (! strcmp(s, "exit\n"))
-            break;
+  while (get_line(s, LINELEN)) {
+    if (! strcmp(s, "exit\n"))
+      break;
 
-        if (! strcmp(s, "bg\n")) {
-          exec_bg();
-        }
-        else {
-          curr_job = parse_line(s);
+    if (! strcmp(s, "bg\n")) {
+      exec_bg();
+    }
+    else {
+      curr_job = parse_line(s);
 
 #if 0
-          print_job_list(curr_job);
+      print_job_list(curr_job);
 #endif
 
-          exec_job_list(curr_job);
-        }
-
-        free_job(curr_job);
+      exec_job_list(curr_job);
     }
 
-    xv_destroy(&cz_pgids);
+    free_job(curr_job);
+  }
 
-    return 0;
+  xv_destroy(&cz_pgids);
+
+  return 0;
 }
