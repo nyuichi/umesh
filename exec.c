@@ -145,7 +145,7 @@ exec_process_list(process *pr_list)
   return pgid;
 }
 
-extern xvect cz_pgids;
+extern xvect cz_jobs;
 
 int
 exec_job(process *pr_list, int fg)
@@ -186,14 +186,14 @@ exec_job(process *pr_list, int fg)
 
       /* pid of the first process of a job is the pgid of the job */
       pgid = pr_list->pid;
-      for (i = 0; i < xv_size(&cz_pgids);) {
-        if (*(pid_t *)xv_get(&cz_pgids, i) == pgid) {
-          xv_splice(&cz_pgids, i, 1);
+      for (i = 0; i < xv_size(&cz_jobs);) {
+        if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
+          xv_splice(&cz_jobs, i, 1);
         } else {
           ++i;
         }
       }
-      xv_push(&cz_pgids, &pgid);
+      xv_push(&cz_jobs, &pgid);
 
       sigprocmask(SIG_UNBLOCK, &sigset, NULL);
     }

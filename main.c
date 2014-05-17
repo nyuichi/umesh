@@ -10,7 +10,7 @@
 void print_job_list(job *);
 void exec_job_list(job *);
 
-xvect cz_pgids;                 /* can have some duplicates */
+xvect cz_jobs;                 /* list of pgids of suspended jobs */
 
 void
 do_sigchld(int sig)
@@ -22,14 +22,14 @@ do_sigchld(int sig)
   while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
     if (WIFSTOPPED(status)) {
       pgid = getpgid(pid);
-      for (i = 0; i < xv_size(&cz_pgids);) {
-        if (*(pid_t *)xv_get(&cz_pgids, i) == pgid) {
-          xv_splice(&cz_pgids, i, 1);
+      for (i = 0; i < xv_size(&cz_jobs);) {
+        if (*(pid_t *)xv_get(&cz_jobs, i) == pgid) {
+          xv_splice(&cz_jobs, i, 1);
         } else {
           ++i;
         }
       }
-      xv_push(&cz_pgids, &pgid);
+      xv_push(&cz_jobs, &pgid);
     }
   }
 }
@@ -76,8 +76,8 @@ exec_bg(void)
   sigaddset(&sigset, SIGCHLD);
   sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-  if (xv_size(&cz_pgids) > 0) {
-    pgid = *(pid_t *)xv_pop(&cz_pgids);
+  if (xv_size(&cz_jobs) > 0) {
+    pgid = *(pid_t *)xv_pop(&cz_jobs);
     kill(-pgid, SIGCONT);
   } else {
     fprintf(stderr, "no suspended process\n");
@@ -91,7 +91,7 @@ main(int argc, char *argv[]) {
   char s[LINELEN];
   job *curr_job;
 
-  xv_init(&cz_pgids, sizeof(pid_t));
+  xv_init(&cz_jobs, sizeof(pid_t));
 
   init();
 
@@ -115,7 +115,7 @@ main(int argc, char *argv[]) {
     free_job(curr_job);
   }
 
-  xv_destroy(&cz_pgids);
+  xv_destroy(&cz_jobs);
 
   return 0;
 }
