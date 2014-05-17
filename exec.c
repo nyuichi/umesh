@@ -98,6 +98,10 @@ exec_process_list(process *pr_list)
   pid_t pid, pgid;
   const char *cmd;
 
+  if (open_pipes(pr_list) < 0) {
+    return -1;
+  }
+
   pgid = -1;
 
   for (pr = pr_list; pr != NULL; pr = pr->next) {
@@ -150,12 +154,6 @@ exec_job(process *pr_list, int fg)
   pid_t pgid;
   int status;
 
-  /* pipes & redirects */
-  if (open_pipes(pr_list) < 0) {
-    return -1;
-  }
-
-  /* fork & exec */
   if ((pgid = exec_process_list(pr_list)) < 0) {
     return -1;
   }
